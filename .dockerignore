@@ -1,0 +1,14 @@
+.git
+.venv
+frontend/node_modules
+frontend/build
+__pycache__
+*/__pycache__
+*/*/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+lenny_growth_assistant.db
+.DS_Store
+*.log

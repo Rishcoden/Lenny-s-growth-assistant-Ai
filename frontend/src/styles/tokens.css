@@ -1,0 +1,132 @@
+/* ==========================================================================
+   FIELDNOTES DESIGN SYSTEM — DESIGN TOKENS
+   Visual identity for Lenny Growth Assistant
+   ========================================================================== */
+
+:root {
+  /* Common non-color tokens */
+  --font-serif: 'Instrument Serif', 'Newsreader', Georgia, serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --sidebar-width: 270px;
+  --inspector-width: 390px;
+  --max-reading-width: 780px;
+  --max-content-width: 1140px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  --transition-fast: 140ms ease;
+  --transition-normal: 220ms ease;
+  --transition-theme: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT THEME (Default)
+   -------------------------------------------------------------------------- */
+:root, [data-theme="light"] {
+  --app-bg: #F5F4EF;
+  --surface: #FFFFFF;
+  --surface-secondary: #ECEBE4;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #E7E5DC;
+
+  --text-primary: #20231F;
+  --text-secondary: #72766C;
+  --text-muted: #969A8E;
+  --text-inverse: #FFFFFF;
+
+  --border: #DEDCD2;
+  --border-subtle: #E8E7DF;
+  --border-strong: #C4C1B2;
+  --border-focus: #526A46;
+
+  --accent: #526A46;
+  --accent-hover: #405438;
+  --accent-soft: #E4EBDD;
+  --accent-border: #9CB890;
+  --accent-text: #FFFFFF;
+
+  --highlight: #C96F4A;
+  --highlight-hover: #B45F3C;
+  --highlight-soft: #F9EFEB;
+  --highlight-text: #FFFFFF;
+
+  --code-bg: #EAE9E1;
+  --code-border: #D8D6CB;
+  
+  --tag-bg: #E5E3D8;
+  --tag-text: #484D42;
+
+  --danger: #B43830;
+  --danger-bg: #FAECEB;
+  --success: #3E7348;
+  --success-bg: #EAF4EB;
+
+  --shadow-subtle: 0 1px 2px rgba(32, 35, 31, 0.04);
+  --shadow-card: 0 2px 6px rgba(32, 35, 31, 0.05);
+  --shadow-panel: -2px 0 16px rgba(32, 35, 31, 0.06);
+  --shadow-modal: 0 16px 40px rgba(32, 35, 31, 0.14);
+
+  --scrollbar-thumb: #D0CDC0;
+  --scrollbar-thumb-hover: #B5B2A3;
+
+  color-scheme: light;
+}
+
+/* --------------------------------------------------------------------------
+   DARK THEME
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --app-bg: #151714;
+  --surface: #1C201B;
+  --surface-secondary: #252A23;
+  --surface-elevated: #222720;
+  --surface-hover: #2C3229;
+
+  --text-primary: #F0F0E9;
+  --text-secondary: #A0A69A;
+  --text-muted: #6B7265;
+  --text-inverse: #151714;
+
+  --border: #343A30;
+  --border-subtle: #292E25;
+  --border-strong: #464E41;
+  --border-focus: #A9C493;
+
+  --accent: #A9C493;
+  --accent-hover: #BDD5AA;
+  --accent-soft: #273423;
+  --accent-border: #526A46;
+  --accent-text: #151714;
+
+  --highlight: #E39A76;
+  --highlight-hover: #EDB091;
+  --highlight-soft: #38251C;
+  --highlight-text: #151714;
+
+  --code-bg: #20251E;
+  --code-border: #333A2F;
+  
+  --tag-bg: #272C24;
+  --tag-text: #D2D8CA;
+
+  --danger: #E06D66;
+  --danger-bg: #321F1E;
+  --success: #70B87E;
+  --success-bg: #1C2E20;
+
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-panel: -2px 0 20px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.7);
+
+  --scrollbar-thumb: #353B30;
+  --scrollbar-thumb-hover: #485142;
+
+  color-scheme: dark;
+}
