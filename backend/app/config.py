@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,7 +9,10 @@ DEFAULT_CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(str(PROJECT_ROOT / ".env"), ".env"),
+        extra="ignore",
+    )
 
     APP_NAME: str = "Lenny Growth Assistant API"
     APP_VERSION: str = "1.0.0"
@@ -40,6 +44,14 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    @field_validator("OPENAI_API_KEY", "ANTHROPIC_API_KEY", mode="before")
+    @classmethod
+    def clean_api_key(cls, v):
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            return v_stripped if v_stripped else None
+        return v
 
 
 settings = Settings()

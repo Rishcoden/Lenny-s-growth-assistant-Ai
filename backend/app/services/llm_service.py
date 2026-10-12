@@ -1,9 +1,22 @@
 import logging
+import re
 from typing import Dict, Any, Tuple, Optional, List
 import ollama
 from backend.app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_error(error: Exception) -> str:
+    """Sanitize error messages to ensure API keys are never exposed in logs or responses."""
+    msg = str(error)
+    if settings.OPENAI_API_KEY:
+        msg = msg.replace(settings.OPENAI_API_KEY, "[REDACTED_API_KEY]")
+    if settings.ANTHROPIC_API_KEY:
+        msg = msg.replace(settings.ANTHROPIC_API_KEY, "[REDACTED_API_KEY]")
+    # Redact standard OpenAI / Anthropic key patterns
+    msg = re.sub(r'sk-[a-zA-Z0-9_\-]{8,}', '[REDACTED_API_KEY]', msg)
+    return msg
 
 SYSTEM_PROMPT_CHAT = """You are Lenny's Growth Assistant, an authoritative, rigorous editorial research assistant grounded in transcripts from Lenny's Podcast.
 
@@ -90,7 +103,7 @@ class LLMService:
                 "name": "OpenAI GPT-4o-mini (Cloud)",
                 "provider": "openai",
                 "is_local": False,
-                "configured": bool(settings.OPENAI_API_KEY),
+                "configured": bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip()),
                 "is_default": self.default_provider == "openai",
                 "description": "High-efficiency cloud model from OpenAI.",
             },
@@ -99,7 +112,7 @@ class LLMService:
                 "name": "Claude 3.5 Sonnet (Cloud)",
                 "provider": "anthropic",
                 "is_local": False,
-                "configured": bool(settings.ANTHROPIC_API_KEY),
+                "configured": bool(settings.ANTHROPIC_API_KEY and settings.ANTHROPIC_API_KEY.strip()),
                 "is_default": self.default_provider == "anthropic",
                 "description": "State-of-the-art reasoning and writing model from Anthropic.",
             },
@@ -146,14 +159,14 @@ class LLMService:
                 ) from e
 
         elif chosen_provider == "openai":
-            if not settings.OPENAI_API_KEY:
+            if not (settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip()):
                 raise ValueError(
                     "OpenAI provider selected but OPENAI_API_KEY is not configured in the backend environment."
                 )
             chosen_model = model or settings.OPENAI_MODEL
             try:
                 from openai import OpenAI
-                client = OpenAI(api_key=settings.OPENAI_API_KEY)
+                client = OpenAI(api_key=settings.OPENAI_API_KEY, max_retries=0)
                 completion = client.chat.completions.create(
                     model=chosen_model,
                     messages=[
@@ -173,18 +186,22 @@ class LLMService:
                 }
                 return answer, metadata
             except Exception as e:
-                logger.error(f"OpenAI chat error with model {chosen_model}: {e}")
-                raise RuntimeError(f"OpenAI generation error ({chosen_model}): {e}") from e
+                clean_err = _sanitize_error(e)
+                logger.error(f"OpenAI chat error with model {chosen_model}: {clean_err}")
+                raise RuntimeError(f"OpenAI generation error ({chosen_model}): {clean_err}") from None
 
         elif chosen_provider == "anthropic":
-            if not settings.ANTHROPIC_API_KEY:
+            if not (settings.ANTHROPIC_API_KEY and settings.ANTHROPIC_API_KEY.strip()):
                 raise ValueError(
                     "Anthropic provider selected but ANTHROPIC_API_KEY is not configured in the backend environment."
                 )
             chosen_model = model or settings.ANTHROPIC_MODEL
+            # Map shorthand frontend ID to exact configured Anthropic model name
+            if chosen_model in ("claude-3-5-sonnet", "default"):
+                chosen_model = settings.ANTHROPIC_MODEL
             try:
                 import anthropic
-                client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+                client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY, max_retries=0)
                 resp = client.messages.create(
                     model=chosen_model,
                     system=active_system_prompt,
@@ -202,8 +219,9 @@ class LLMService:
                 }
                 return answer, metadata
             except Exception as e:
-                logger.error(f"Anthropic chat error with model {chosen_model}: {e}")
-                raise RuntimeError(f"Anthropic generation error ({chosen_model}): {e}") from e
+                clean_err = _sanitize_error(e)
+                logger.error(f"Anthropic chat error with model {chosen_model}: {clean_err}")
+                raise RuntimeError(f"Anthropic generation error ({chosen_model}): {clean_err}") from None
 
         else:
             raise ValueError(f"Unsupported LLM provider '{chosen_provider}'. Supported: ollama, openai, anthropic.")

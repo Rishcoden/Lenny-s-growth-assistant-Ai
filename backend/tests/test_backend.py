@@ -221,3 +221,70 @@ def test_essay_and_artifact_flow():
         assert "markdown" in art
         assert "<h1" in art["html"]
 
+
+def test_openai_unconfigured_error():
+    from backend.app.config import settings
+    from backend.app.services.llm_service import llm_service
+    with patch.object(settings, "OPENAI_API_KEY", None):
+        with pytest.raises(ValueError) as exc:
+            llm_service.generate_chat_response("test", provider="openai")
+        assert "OPENAI_API_KEY is not configured" in str(exc.value)
+
+
+def test_anthropic_unconfigured_error():
+    from backend.app.config import settings
+    from backend.app.services.llm_service import llm_service
+    with patch.object(settings, "ANTHROPIC_API_KEY", None):
+        with pytest.raises(ValueError) as exc:
+            llm_service.generate_chat_response("test", provider="anthropic")
+        assert "ANTHROPIC_API_KEY is not configured" in str(exc.value)
+
+
+def test_error_sanitization_masks_api_keys():
+    from backend.app.services.llm_service import _sanitize_error
+    from backend.app.config import settings
+    with patch.object(settings, "OPENAI_API_KEY", "mock-openai-secret-key-for-testing"), \
+         patch.object(settings, "ANTHROPIC_API_KEY", "mock-anthropic-secret-key-for-testing"):
+        raw_error = Exception("Invalid key: mock-openai-secret-key-for-testing or mock-anthropic-secret-key-for-testing")
+        sanitized = _sanitize_error(raw_error)
+        assert "mock-openai-secret-key" not in sanitized
+        assert "mock-anthropic-secret-key" not in sanitized
+        assert "[REDACTED_API_KEY]" in sanitized
+
+
+@patch("backend.app.api.chat.rag_service.retrieve_passages")
+@patch("backend.app.api.chat.llm_service.generate_chat_response")
+def test_openai_chat_endpoint_mocked(mock_llm, mock_rag):
+    mock_rag.return_value = []
+    mock_llm.return_value = (
+        "OpenAI answer grounded in transcripts",
+        {"provider": "openai", "model": "gpt-4o-mini"},
+    )
+    response = client.post(
+        "/api/chat",
+        json={"message": "Test question", "provider": "openai", "model": "gpt-4o-mini"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "openai"
+    assert data["model"] == "gpt-4o-mini"
+    assert "OpenAI answer" in data["answer"]
+
+
+@patch("backend.app.api.chat.rag_service.retrieve_passages")
+@patch("backend.app.api.chat.llm_service.generate_chat_response")
+def test_anthropic_chat_endpoint_mocked(mock_llm, mock_rag):
+    mock_rag.return_value = []
+    mock_llm.return_value = (
+        "Claude answer grounded in transcripts",
+        {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022"},
+    )
+    response = client.post(
+        "/api/chat",
+        json={"message": "Test question", "provider": "anthropic", "model": "claude-3-5-sonnet"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "anthropic"
+    assert data["model"] == "claude-3-5-sonnet-20241022"
+    assert "Claude answer" in data["answer"]
