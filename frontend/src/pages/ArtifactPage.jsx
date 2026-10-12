@@ -1,8 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Copy, Check, Download, ShieldCheck, Code, Eye } from 'lucide-react';
-import DOMPurify from 'dompurify';
+import {
+  ArrowLeft,
+  Copy,
+  Check,
+  Download,
+  ShieldCheck,
+  Code,
+  Eye,
+  FileText,
+  AlertCircle
+} from 'lucide-react';
 import api from '../services/api';
+import {
+  buildEditorialDocument,
+  exportArtifactAsHtml
+} from '../utils/artifactDocument';
 
 export default function ArtifactPage() {
   const { id } = useParams();
@@ -12,147 +25,242 @@ export default function ArtifactPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('preview'); // 'preview' | 'markdown'
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  // Observe active theme on <html> for theme-consistent iframe preview
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) || 'light';
+  });
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const observer = new MutationObserver(() => {
+      const active = document.documentElement.getAttribute('data-theme') || 'light';
+      setCurrentTheme(active);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Fetch artifact payload
+  useEffect(() => {
+    let isMounted = true;
     const fetchArtifact = async () => {
       try {
         setLoading(true);
         setError(null);
         const data = await api.getArtifact(id);
-        setArtifact(data);
+        if (isMounted) {
+          setArtifact(data);
+        }
       } catch (err) {
-        setError(err.message);
+        if (isMounted) {
+          setError(err.message || 'Failed to load editorial artifact.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
+
     fetchArtifact();
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
-  const handleCopy = () => {
-    if (!artifact) return;
-    const content = viewMode === 'preview' ? artifact.html : artifact.markdown;
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownload = () => {
-    if (!artifact) return;
-    const isMarkdown = viewMode === 'markdown';
-    const blob = new Blob([isMarkdown ? artifact.markdown : artifact.html], {
-      type: isMarkdown ? 'text/markdown' : 'text/html',
+  // Generate self-contained editorial document for the sandboxed iframe
+  const previewHtml = useMemo(() => {
+    if (!artifact) return '';
+    return buildEditorialDocument({
+      artifact,
+      isDark: currentTheme === 'dark',
+      forExport: false,
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${artifact.title.replace(/\s+/g, '_').toLowerCase()}.${isMarkdown ? 'md' : 'html'}`;
-    a.click();
-    URL.revokeObjectURL(url);
+  }, [artifact, currentTheme]);
+
+  // Contextual copy action
+  const handleCopy = async () => {
+    if (!artifact) return;
+    try {
+      const isMarkdownMode = viewMode === 'markdown';
+      const content = isMarkdownMode
+        ? (artifact.markdown || '')
+        : buildEditorialDocument({ artifact, isDark: false, forExport: true });
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+      } else {
+        // Fallback for environments lacking clipboard API
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setFeedback({
+        type: 'success',
+        message: isMarkdownMode ? 'Markdown copied' : 'Editorial HTML copied',
+      });
+      setTimeout(() => setFeedback(null), 2500);
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: 'Unable to copy to clipboard',
+      });
+      setTimeout(() => setFeedback(null), 3000);
+    }
   };
 
-  // Build sanitized HTML document for the sandboxed iframe with theme awareness
-  const buildSanitizedFrameContent = (rawHtml) => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const cleanHtml = DOMPurify.sanitize(rawHtml, {
-      USE_PROFILES: { html: true },
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
-    });
-
-    const bg = isDark ? '#1C201B' : '#FFFFFF';
-    const textColor = isDark ? '#F0F0E9' : '#20231F';
-    const border = isDark ? '#343A30' : '#DEDCD2';
-    const codeBg = isDark ? '#20251E' : '#EAE9E1';
-
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              font-size: 15px;
-              line-height: 1.7;
-              color: ${textColor};
-              background-color: ${bg};
-              max-width: 760px;
-              margin: 0 auto;
-              padding: 36px 20px;
-            }
-            h1, h2, h3, h4 {
-              font-family: Georgia, serif;
-              color: ${textColor};
-              line-height: 1.3;
-              margin-top: 1.5em;
-              margin-bottom: 0.55em;
-            }
-            h1 { font-size: 2.1rem; }
-            h2 { font-size: 1.5rem; border-bottom: 1px solid ${border}; padding-bottom: 6px; }
-            p { margin-bottom: 1.2em; }
-            ul, ol { margin-left: 1.4em; margin-bottom: 1.2em; }
-            li { margin-bottom: 0.35em; }
-            blockquote {
-              border-left: 2px solid #526A46;
-              padding: 6px 14px;
-              margin: 1.3em 0;
-              font-style: italic;
-              color: #777;
-            }
-            code {
-              font-family: monospace;
-              font-size: 13px;
-              background: ${codeBg};
-              padding: 2px 5px;
-              border-radius: 3px;
-            }
-          </style>
-        </head>
-        <body>
-          ${cleanHtml}
-        </body>
-      </html>
-    `;
+  // Standalone offline HTML export
+  const handleExport = () => {
+    if (!artifact) return;
+    try {
+      exportArtifactAsHtml(artifact);
+      setFeedback({
+        type: 'success',
+        message: 'HTML publication downloaded',
+      });
+      setTimeout(() => setFeedback(null), 2500);
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: `Export failed: ${err.message}`,
+      });
+      setTimeout(() => setFeedback(null), 3000);
+    }
   };
+
+  // Safe publication date formatting
+  const formattedDate = useMemo(() => {
+    if (!artifact?.created_at) return null;
+    try {
+      const d = new Date(artifact.created_at);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch (_) {
+      return null;
+    }
+  }, [artifact?.created_at]);
 
   if (loading) {
     return (
-      <div className="fn-home-canvas" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+      <div className="fn-home-canvas" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13.5px', padding: '60px 36px' }}>
         <span className="fn-status-dot online" style={{ animation: 'pulse 1s infinite' }} />
-        <span>Loading editorial artifact...</span>
+        <span style={{ color: 'var(--text-secondary)' }}>Loading FIELDNOTES editorial artifact...</span>
       </div>
     );
   }
 
   if (error || !artifact) {
     return (
-      <div className="fn-home-canvas">
-        <button className="fn-btn fn-btn-secondary fn-btn-sm" onClick={() => navigate(-1)} style={{ marginBottom: '16px' }}>
+      <div className="fn-home-canvas" style={{ maxWidth: '860px', padding: '40px 36px' }}>
+        <button
+          className="fn-btn fn-btn-secondary fn-btn-sm"
+          onClick={() => navigate(-1)}
+          style={{ marginBottom: '20px' }}
+          aria-label="Return to previous page"
+        >
           <ArrowLeft size={13} />
-          <span>Go Back</span>
+          <span>Return</span>
         </button>
-        <div style={{ color: 'var(--danger)', padding: '16px', backgroundColor: 'var(--danger-bg)', borderRadius: 'var(--radius-xs)' }}>
-          {error || 'Artifact not found.'}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            color: 'var(--danger)',
+            padding: '18px 20px',
+            backgroundColor: 'var(--danger-bg)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--danger)',
+            fontSize: '13.5px',
+          }}
+          role="alert"
+        >
+          <AlertCircle size={18} />
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: '2px' }}>Artifact Load Error</div>
+            <div>{error || 'Requested artifact could not be found.'}</div>
+          </div>
         </div>
       </div>
     );
   }
 
+  const sourcesCount = Array.isArray(artifact.sources) ? artifact.sources.length : 0;
+  const wordCount = typeof artifact.word_count === 'number' && artifact.word_count > 0 ? artifact.word_count : null;
+
   return (
-    <div className="fn-home-canvas" style={{ maxWidth: '920px' }}>
-      {/* Top Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-        <button className="fn-btn fn-btn-secondary fn-btn-sm" onClick={() => navigate(-1)}>
+    <div className="fn-home-canvas" style={{ maxWidth: '960px', padding: '32px 32px 72px' }}>
+      {/* Top Editorial Controls Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '26px',
+        }}
+      >
+        <button
+          className="fn-btn fn-btn-secondary fn-btn-sm"
+          onClick={() => navigate(-1)}
+          aria-label="Back to Essay Studio"
+        >
           <ArrowLeft size={13} />
           <span>Back</span>
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ display: 'flex', backgroundColor: 'var(--surface-secondary)', padding: '2px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          {/* Notification feedback indicator */}
+          {feedback && (
+            <div
+              style={{
+                fontSize: '11.5px',
+                fontFamily: 'var(--font-mono)',
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-xs)',
+                backgroundColor: feedback.type === 'error' ? 'var(--danger-bg)' : 'var(--accent-soft)',
+                color: feedback.type === 'error' ? 'var(--danger)' : 'var(--accent)',
+                border: `1px solid ${feedback.type === 'error' ? 'var(--danger)' : 'var(--accent-border)'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              {feedback.type === 'error' ? <AlertCircle size={11} /> : <Check size={11} />}
+              <span>{feedback.message}</span>
+            </div>
+          )}
+
+          {/* Mode Switcher */}
+          <div
+            style={{
+              display: 'flex',
+              backgroundColor: 'var(--surface-secondary)',
+              padding: '2px',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--border)',
+            }}
+            role="group"
+            aria-label="Artifact view mode"
+          >
             <button
               className={`fn-btn fn-btn-sm ${viewMode === 'preview' ? 'fn-btn-secondary' : 'fn-btn-ghost'}`}
               onClick={() => setViewMode('preview')}
+              aria-pressed={viewMode === 'preview'}
+              style={{ gap: '5px' }}
             >
               <Eye size={12} />
               <span>Preview</span>
@@ -160,66 +268,115 @@ export default function ArtifactPage() {
             <button
               className={`fn-btn fn-btn-sm ${viewMode === 'markdown' ? 'fn-btn-secondary' : 'fn-btn-ghost'}`}
               onClick={() => setViewMode('markdown')}
+              aria-pressed={viewMode === 'markdown'}
+              style={{ gap: '5px' }}
             >
               <Code size={12} />
               <span>Markdown</span>
             </button>
           </div>
 
-          <button className="fn-btn fn-btn-secondary fn-btn-sm" onClick={handleCopy}>
-            {copied ? <Check size={12} color="var(--success)" /> : <Copy size={12} />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
+          {/* Copy Button */}
+          <button
+            className="fn-btn fn-btn-secondary fn-btn-sm"
+            onClick={handleCopy}
+            title={viewMode === 'preview' ? 'Copy styled HTML publication' : 'Copy raw Markdown source'}
+            aria-label="Copy artifact content"
+          >
+            {feedback?.type === 'success' && feedback.message.startsWith('Copied') ? (
+              <Check size={12} color="var(--success)" />
+            ) : (
+              <Copy size={12} />
+            )}
+            <span>{viewMode === 'preview' ? 'Copy HTML' : 'Copy Markdown'}</span>
           </button>
 
-          <button className="fn-btn fn-btn-secondary fn-btn-sm" onClick={handleDownload}>
+          {/* Export HTML Button */}
+          <button
+            className="fn-btn fn-btn-primary fn-btn-sm"
+            onClick={handleExport}
+            title="Download complete, self-contained HTML publication for offline reading"
+            aria-label="Export standalone HTML artifact"
+          >
             <Download size={12} />
-            <span>Export</span>
+            <span>Export Publication</span>
           </button>
         </div>
       </div>
 
-      {/* Artifact Metadata */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-          <span className="fn-badge fn-badge-accent">EDITORIAL ARTIFACT</span>
-          <span className="fn-badge fn-badge-neutral">{artifact.word_count} WORDS</span>
-          <span className="fn-badge fn-badge-neutral" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <ShieldCheck size={10} color="var(--success)" />
-            <span>DOMPurify Sanitized</span>
+      {/* Prominent Editorial Header & Publication Metadata */}
+      <header style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+          <span className="fn-badge fn-badge-accent">FIELDNOTES EDITORIAL</span>
+          {artifact.topic && (
+            <span className="fn-badge fn-badge-neutral">{artifact.topic.toUpperCase()}</span>
+          )}
+          {wordCount && (
+            <span className="fn-badge fn-badge-neutral">{wordCount.toLocaleString()} WORDS</span>
+          )}
+          {formattedDate && (
+            <span className="fn-badge fn-badge-neutral">{formattedDate.toUpperCase()}</span>
+          )}
+          {sourcesCount > 0 && (
+            <span className="fn-badge fn-badge-neutral">{sourcesCount} SOURCES</span>
+          )}
+          <span
+            className="fn-badge fn-badge-neutral"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+            title="Sanitized via DOMPurify with empty iframe sandbox"
+          >
+            <ShieldCheck size={11} color="var(--success)" />
+            <span>Sanitized & Sandboxed</span>
           </span>
         </div>
-        <h1 className="editorial-serif" style={{ fontSize: '2.3rem', fontWeight: 600 }}>
-          {artifact.title}
-        </h1>
-      </div>
 
-      {/* Viewer View */}
+        <h1
+          className="editorial-serif"
+          style={{
+            fontSize: '2.45rem',
+            fontWeight: 600,
+            lineHeight: 1.22,
+            letterSpacing: '-0.02em',
+            color: 'var(--text-primary)',
+          }}
+        >
+          {artifact.title || 'Untitled Editorial Artifact'}
+        </h1>
+      </header>
+
+      {/* Primary Reading / Source Viewport */}
       {viewMode === 'preview' ? (
         <div className="fn-sandbox-container">
           <iframe
             className="fn-sandbox-frame"
-            title={artifact.title}
-            srcDoc={buildSanitizedFrameContent(artifact.html)}
-            sandbox="allow-same-origin"
+            title={artifact.title || 'FIELDNOTES Editorial Artifact'}
+            srcDoc={previewHtml}
+            sandbox=""
           />
         </div>
       ) : (
-        <div
-          style={{
-            backgroundColor: 'var(--code-bg)',
-            color: 'var(--text-primary)',
-            padding: '24px',
-            borderRadius: 'var(--radius-xs)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '12.5px',
-            lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-            maxHeight: '750px',
-            overflowY: 'auto',
-            border: '1px solid var(--border)',
-          }}
-        >
-          {artifact.markdown}
+        <div className="fn-markdown-viewer">
+          <div className="fn-markdown-viewer-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FileText size={13} />
+              <span style={{ fontWeight: 600 }}>RAW MARKDOWN SOURCE</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {wordCount && <span>{wordCount.toLocaleString()} words</span>}
+              <span>{(artifact.markdown || '').length.toLocaleString()} characters</span>
+              <button
+                className="fn-btn fn-btn-secondary fn-btn-sm"
+                onClick={handleCopy}
+                style={{ padding: '2px 8px', fontSize: '11px' }}
+              >
+                <Copy size={11} />
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+          <div className="fn-markdown-viewer-body">
+            {artifact.markdown || '# No markdown source content available.'}
+          </div>
         </div>
       )}
     </div>
