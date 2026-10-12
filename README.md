@@ -65,9 +65,12 @@ Designed with an original, premium editorial aesthetic ("The Product Research De
 6. **Essay Studio (~1,250-word Deep Dives)**:
    - Dedicated long-form writing desk following Lenny's *30 for 30*-style editorial essays.
    - Grounded in retrieved transcript chunks, with thesis formulation and word-counter badges.
-7. **Secure Artifact Viewer**:
-   - View generated essays in either styled reading mode or raw markdown.
-   - Sandboxed `<iframe>` rendering with `DOMPurify` HTML sanitization to prevent script execution.
+7. **Secure Editorial Artifact Viewer**:
+   - Renders generated essays in a polished, publication-quality editorial layout.
+   - Supports formatted Preview and raw Markdown source modes.
+   - Exports self-contained HTML documents with embedded CSS, responsive styling, and print-friendly layouts.
+   - Supports copying the rendered HTML or Markdown source.
+   - Sanitizes untrusted HTML with DOMPurify and uses a strictly sandboxed iframe to isolate previews.
 8. **Configurable Providers & PostgreSQL Persistence**:
    - Default: Local Ollama (private and free).
    - Optional Cloud: OpenAI and Anthropic Claude via backend environment variables.
